@@ -2,34 +2,147 @@ name: Build APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main, offline-auth-system ]
+  pull_request:
+    branches: [ main, offline-auth-system ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write
 
     steps:
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: 17
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Install Android SDK components
+        run: |
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --update
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34"
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0"
 
-      - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+        working-directory: DroidBridgeLauncher-0.3.10
 
-      - name: Upload APK
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Gradle wrapper
+        uses: actions/cache@v4
+        with:
+          path: DroidBridgeLauncher-0.3.10/gradle/wrapper
+          key: ${{ runner.os }}-gradle-wrapper-${{ hashFiles('**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-wrapper-
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+        working-directory: DroidBridgeLauncher-0.3.10
+        env:
+          GRADLE_OPTS: -Xmx4096m
+
+      - name: Build release APK (unsigned)
+        run: ./gradlew assembleRelease
+        working-directory: DroidBridgeLauncher-0.3.10
+        env:
+          GRADLE_OPTS: -Xmx4096m
+
+      - name: Sign APK (if keystore exists)
+        if: hashFiles('release.keystore') != ''
+        run: |
+          jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
+            -keystore release.keystore \
+            -storepass ${{ secrets.KEYSTORE_PASSWORD }} \
+            -keypass ${{ secrets.KEY_PASSWORD }} \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            release_key
+          mv app/build/outputs/apk/release/app-release-unsigned.apk \
+             app/build/outputs/apk/release/app-release-signed.apk
+        working-directory: DroidBridgeLauncher-0.3.10
+
+      - name: Generate APK info
+        run: |
+          echo "## Build Information" > build-info.md
+          echo "" >> build-info.md
+          echo "**Build Date:** $(date)" >> build-info.md
+          echo "**Branch:** ${{ github.ref }}" >> build-info.md
+          echo "**Commit:** ${{ github.sha }}" >> build-info.md
+          echo "" >> build-info.md
+          echo "### APK Files Generated" >> build-info.md
+          echo "" >> build-info.md
+          if [ -f DroidBridgeLauncher-0.3.10/app/build/outputs/apk/debug/app-debug.apk ]; then
+            SIZE=$(du -h DroidBridgeLauncher-0.3.10/app/build/outputs/apk/debug/app-debug.apk | cut -f1)
+            echo "- **Debug APK:** \`app-debug.apk\` ($SIZE)" >> build-info.md
+          fi
+          if [ -f DroidBridgeLauncher-0.3.10/app/build/outputs/apk/release/app-release-signed.apk ]; then
+            SIZE=$(du -h DroidBridgeLauncher-0.3.10/app/build/outputs/apk/release/app-release-signed.apk | cut -f1)
+            echo "- **Release APK (Signed):** \`app-release-signed.apk\` ($SIZE)" >> build-info.md
+          elif [ -f DroidBridgeLauncher-0.3.10/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            SIZE=$(du -h DroidBridgeLauncher-0.3.10/app/build/outputs/apk/release/app-release-unsigned.apk | cut -f1)
+            echo "- **Release APK (Unsigned):** \`app-release-unsigned.apk\` ($SIZE)" >> build-info.md
+          fi
+          cat build-info.md
+
+      - name: Upload APK artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: apk-build-${{ github.run_number }}
+          path: DroidBridgeLauncher-0.3.10/app/build/outputs/apk/
+          retention-days: 30
+          compression-level: 6
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ github.run_number }}
+          path: DroidBridgeLauncher-0.3.10/app/build/outputs/
+          retention-days: 7
+
+      - name: Create release draft (on tag)
+        if: startsWith(github.ref, 'refs/tags/v') && success()
+        uses: softprops/action-gh-release@v1
+        with:
+          files: DroidBridgeLauncher-0.3.10/app/build/outputs/apk/release/app-release*.apk
+          draft: true
+          body_path: build-info.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment PR with build status
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ job.status }}';
+            const symbol = status === 'success' ? '✅' : '❌';
+            const message = `${symbol} **Build ${status.toUpperCase()}**\n\nBuild run: #${{ github.run_number }}\n\nArtifacts available in the build artifacts.`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
