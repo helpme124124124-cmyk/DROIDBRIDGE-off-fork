@@ -1,0 +1,4 @@
+- name: Extract Droidbridge.zip
+  run: |
+    mkdir extracted
+    unzip Droidbridge.zip -d extracted
