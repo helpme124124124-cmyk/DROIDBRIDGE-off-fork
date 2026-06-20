@@ -1,4 +1,14 @@
-- name: Extract Droidbridge.zip
+- name: Extract ZIP
+  run: unzip Droidbridge.zip -d extracted
+
+- name: Move files to repository root
   run: |
-    mkdir extracted
-    unzip Droidbridge.zip -d extracted
+    cp -r extracted/* .
+
+- name: Commit extracted files
+  run: |
+    git config --global user.name "github-actions[bot]"
+    git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+    git add .
+    git commit -m "Extract Droidbridge.zip" || echo "No changes"
+    git push
