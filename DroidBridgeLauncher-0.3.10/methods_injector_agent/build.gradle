@@ -1,0 +1,52 @@
+plugins {
+    id 'java-library'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+// Do NOT package ASM into this jar.
+// Fabric already places ASM on the game JVM classpath. Bundling ASM here causes
+// Fabric/Knot to crash with duplicate ASM classes.
+dependencies {
+    compileOnly 'org.ow2.asm:asm:9.8'
+    compileOnly 'org.ow2.asm:asm-tree:9.8'
+    compileOnly 'org.ow2.asm:asm-commons:9.8'
+}
+
+tasks.named('jar') {
+    archiveBaseName.set('methods_injector_agent')
+
+    manifest {
+        attributes(
+                'Manifest-Version': '1.0',
+                'Premain-Class': 'ca.dnamobile.javalauncher.agent.StartInjectors',
+                'Agent-Class': 'ca.dnamobile.javalauncher.agent.StartInjectors',
+                'Can-Redefine-Classes': 'true',
+                'Can-Retransform-Classes': 'true'
+        )
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+    exclude 'module-info.class'
+
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+tasks.register('copyAgentToAssets', Copy) {
+    dependsOn tasks.named('jar')
+
+    from(tasks.named('jar').flatMap { it.archiveFile })
+    into(rootProject.file('app/src/main/assets/components/methods_injector_agent'))
+
+    rename { String ignored ->
+        'methods_injector_agent.jar'
+    }
+}

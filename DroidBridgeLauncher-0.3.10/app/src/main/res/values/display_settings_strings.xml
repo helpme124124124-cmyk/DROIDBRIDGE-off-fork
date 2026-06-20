@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_renderer_resolution_scale_title">Resolution Scale</string>
+    <string name="settings_renderer_resolution_scale_summary">Lower values improve performance; higher values improve image quality. Changes apply the next time Minecraft starts.</string>
+    <string name="settings_renderer_resolution_scale_value">Resolution scale: %1$d%%</string>
+    <string name="settings_renderer_resolution_scale_value_placeholder">Resolution scale: 100%</string>
+    <string name="settings_renderer_resolution_scale_dialog_message">Enter a value from %1$d%% to %2$d%%. 100%% uses the normal screen size.</string>
+
+    <string name="settings_renderer_full_screen_on">Force fullscreen mode: On</string>
+    <string name="settings_renderer_full_screen_off">Force fullscreen mode: Off</string>
+    <string name="settings_renderer_full_screen_summary">When enabled, Minecraft uses immersive fullscreen and ignores safe areas like notches and punch-holes.</string>
+
+    <string name="settings_renderer_avoid_rounded_corners_on">Avoid rounded display corners: On</string>
+    <string name="settings_renderer_avoid_rounded_corners_off">Avoid rounded display corners: Off</string>
+    <string name="settings_renderer_avoid_rounded_corners_summary">Allows the gameview to ignore rounded corners of your device by adding a small inset.</string>
+</resources>
